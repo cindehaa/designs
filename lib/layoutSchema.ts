@@ -94,6 +94,44 @@ export const subjectSchema = z
   });
 
 // ---------------------------------------------------------------------------
+// LabelGrid — coarse semantic segmentation for "mosaic" mode
+// ---------------------------------------------------------------------------
+
+/**
+ * A coarse per-cell segmentation of the WHOLE photo, used by the mosaic
+ * renderer: each cell's letter is drawn in the true image color sampled under
+ * it, and the character comes from the word of the element the cell belongs to.
+ *
+ * `words` lists the element names in index order; each row character is either
+ * a digit (index into `words`) or `.` for cells that belong to no element
+ * (rendered as bare background). Unlike fields/subjects, this grid is meant to
+ * be faithful 1:1 segmentation — artistic fading is poster mode's job.
+ */
+export const labelGridSchema = z
+  .object({
+    words: z.array(wordSchema).min(1).max(10),
+    rows: z
+      .array(z.string().regex(/^[0-9.]+$/, "label_grid rows must be digits 0-9 or '.'"))
+      .min(8, "label_grid needs at least 8 rows")
+      .max(48, "label_grid may have at most 48 rows"),
+  })
+  .refine((g) => g.rows.every((r) => r.length === g.rows[0].length), {
+    message: "all label_grid rows must have the same length",
+    path: ["rows"],
+  })
+  .refine((g) => g.rows[0].length >= 16 && g.rows[0].length <= 64, {
+    message: "label_grid rows must be 16-64 characters wide",
+    path: ["rows"],
+  })
+  .refine(
+    (g) =>
+      g.rows.every((r) =>
+        [...r].every((ch) => ch === "." || Number(ch) < g.words.length),
+      ),
+    { message: "every digit in label_grid rows must index into words", path: ["rows"] },
+  );
+
+// ---------------------------------------------------------------------------
 // LayoutSpec — the full document
 // ---------------------------------------------------------------------------
 
@@ -104,6 +142,7 @@ export const layoutSpecSchema = z
     font_family: fontFamilySchema,
     fields: z.array(fieldSchema),
     subjects: z.array(subjectSchema),
+    label_grid: labelGridSchema.optional(),
   })
   .refine((spec) => spec.fields.length + spec.subjects.length >= 1, {
     message: "layout must contain at least 1 element (field or subject)",
@@ -122,4 +161,5 @@ export type OpacityPoint = z.infer<typeof opacityPointSchema>;
 export type Field = z.infer<typeof fieldSchema>;
 export type Bbox = z.infer<typeof bboxSchema>;
 export type Subject = z.infer<typeof subjectSchema>;
+export type LabelGrid = z.infer<typeof labelGridSchema>;
 export type LayoutSpec = z.infer<typeof layoutSpecSchema>;

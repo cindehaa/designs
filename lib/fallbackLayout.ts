@@ -31,10 +31,30 @@ export function buildFallbackLayout(): LayoutSpec {
     density_grid.push(row);
   }
 
+  // Coarse label grid mirroring the same composition: the elliptical SUBJECT
+  // blob over a FIELD that occupies the lower half; "." above.
+  const gridCols = 40;
+  const gridRows = 24;
+  const label_rows: string[] = [];
+  for (let r = 0; r < gridRows; r++) {
+    let row = "";
+    const y = r / (gridRows - 1);
+    for (let c = 0; c < gridCols; c++) {
+      const x = c / (gridCols - 1);
+      const dx = (x - 0.5) / 0.2;
+      const dy = (y - 0.5) / 0.2;
+      if (dx * dx + dy * dy <= 1) row += "1"; // SUBJECT ellipse
+      else if (y >= 0.5) row += "0"; // FIELD lower half
+      else row += ".";
+    }
+    label_rows.push(row);
+  }
+
   return {
     background_color: "#efeae2",
     text_color: "#262019",
     font_family: "Roboto Slab",
+    label_grid: { words: ["FIELD", "SUBJECT"], rows: label_rows },
     fields: [
       {
         word: "FIELD",
