@@ -4,6 +4,7 @@ import React, { useCallback, useMemo, useRef, useState } from "react";
 import type { LayoutSpec, FontFamily, OpacityPoint } from "@/lib/layoutSchema";
 import { FONT_FAMILIES, fontVariables } from "@/lib/fonts";
 import WordArtRenderer from "@/components/WordArtRenderer";
+import MosaicRenderer from "@/components/MosaicRenderer";
 import UploadPanel from "@/components/UploadPanel";
 import ExportButtons from "@/components/ExportButtons";
 
@@ -71,12 +72,16 @@ function adjustmentsFromLayout(layout: LayoutSpec): Adjustments {
 
 // --- page ------------------------------------------------------------------
 
+type RenderMode = "poster" | "mosaic";
+
 export default function Home() {
   const [image, setImage] = useState<StoredImage | null>(null);
   const [baseLayout, setBaseLayout] = useState<LayoutSpec | null>(null);
   const [adj, setAdj] = useState<Adjustments | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<RenderMode>("poster");
+  const [letterSize, setLetterSize] = useState(13);
   const svgRef = useRef<SVGSVGElement>(null);
 
   const CANVAS_W = 900;
@@ -86,8 +91,26 @@ export default function Home() {
   // The working layout the renderer draws from: base layout + live overrides.
   const renderLayout = useMemo<LayoutSpec | null>(() => {
     if (!baseLayout || !adj) return null;
+    // Word overrides apply to the mosaic too: label_grid words that match an
+    // element's original word follow that element's override.
+    const wordOverride = new Map<string, string>();
+    baseLayout.fields.forEach((f, i) => {
+      if (adj.fieldWords[i]) wordOverride.set(f.word, adj.fieldWords[i]);
+    });
+    baseLayout.subjects.forEach((s, i) => {
+      if (adj.subjectWords[i]) wordOverride.set(s.word, adj.subjectWords[i]);
+    });
+    const label_grid = baseLayout.label_grid
+      ? {
+          ...baseLayout.label_grid,
+          words: baseLayout.label_grid.words.map(
+            (w) => wordOverride.get(w) || w,
+          ),
+        }
+      : undefined;
     return {
       ...baseLayout,
+      label_grid,
       background_color: adj.background_color,
       text_color: adj.text_color,
       font_family: adj.font_family,
@@ -193,6 +216,55 @@ export default function Home() {
               <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                 {error}
               </div>
+            )}
+
+            {renderLayout && (
+              <section className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+                <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+                  Mode
+                </h2>
+                <div className="grid grid-cols-2 gap-1 rounded-lg bg-neutral-100 p-1">
+                  {(["poster", "mosaic"] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setMode(m)}
+                      className={`rounded-md px-3 py-1.5 text-sm font-medium capitalize transition-colors ${
+                        mode === m
+                          ? "bg-white text-neutral-900 shadow-sm"
+                          : "text-neutral-500 hover:text-neutral-800"
+                      }`}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+                {mode === "mosaic" && (
+                  <div className="mt-4 flex items-center gap-2">
+                    <span className="w-20 shrink-0 text-xs text-neutral-500">
+                      Letter size
+                    </span>
+                    <input
+                      type="range"
+                      min={7}
+                      max={28}
+                      step={1}
+                      value={letterSize}
+                      onChange={(e) => setLetterSize(Number(e.target.value))}
+                      className="w-full"
+                    />
+                    <span className="w-8 shrink-0 text-right text-xs tabular-nums text-neutral-500">
+                      {letterSize}
+                    </span>
+                  </div>
+                )}
+                {mode === "mosaic" && !renderLayout.label_grid && (
+                  <p className="mt-3 text-xs text-amber-600">
+                    This layout has no label grid (generated before mosaic mode
+                    existed) — hit Regenerate to enable it.
+                  </p>
+                )}
+              </section>
             )}
 
             {renderLayout && adj && (
@@ -315,12 +387,23 @@ export default function Home() {
                 <Placeholder text="Generating…" />
               ) : renderLayout ? (
                 <div className="w-full" style={{ aspectRatio: String(aspect) }}>
-                  <WordArtRenderer
-                    ref={svgRef}
-                    layout={renderLayout}
-                    width={CANVAS_W}
-                    height={canvasH}
-                  />
+                  {mode === "mosaic" && image ? (
+                    <MosaicRenderer
+                      ref={svgRef}
+                      layout={renderLayout}
+                      imageSrc={image.previewUrl}
+                      width={CANVAS_W}
+                      height={canvasH}
+                      letterSize={letterSize}
+                    />
+                  ) : (
+                    <WordArtRenderer
+                      ref={svgRef}
+                      layout={renderLayout}
+                      width={CANVAS_W}
+                      height={canvasH}
+                    />
+                  )}
                 </div>
               ) : (
                 <Placeholder text="Your word art will appear here" />
